@@ -18,14 +18,12 @@ bool client_mgr::join(std::shared_ptr<client> player, asio::error_code& err)
 	if (!endpoint_.is_open())
 		return false;
 	
-	join_msg msg{ msg_head {0, 0, 0, msg_type::join}, player_->desc, player_->form, 0 };
+	join_msg msg{ msg_head {sizeof join_msg, 0, 0, msg_type::join}, player_->desc, player_->form, 0 };
 	memcpy_s(msg.name, max_name_len, player_->name, max_name_len);
-	const unsigned int len = sizeof(join_msg);
-	msg.head.length = len;
 	
 	try
 	{
-		endpoint_.send(asio::buffer(&msg, len));
+		endpoint_.send(asio::buffer(&msg, msg.head.length));
 		sequence_ = 1;
 	}
 	catch (asio::system_error& e)
@@ -61,4 +59,12 @@ void client_mgr::start() const
 	{
 		
 	}
+
+	leave_msg leave{ msg_head{sizeof leave_msg, sequence_, id_, msg_type::leave} };
+
+	try
+	{
+		//endpoint_.send(asio::buffer(&leave, leave.head.length));
+	}
+	catch (asio::system_error& e) { }
 }
