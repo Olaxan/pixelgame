@@ -157,6 +157,7 @@
     <ClCompile Include="pixelgame.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="client.h" />
     <ClInclude Include="client_mgr.h" />
     <ClInclude Include="protocol.h" />
   </ItemGroup>

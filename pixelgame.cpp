@@ -4,10 +4,9 @@
 #include <string>
 
 #define ASIO_STANDALONE
-
-#include "protocol.h"
-#include "client_mgr.h"
 #include "asio/asio.hpp"
+
+#include "client_mgr.h"
 #include "userinput/uinput.h"
 
 asio::io_service io_service;
@@ -18,6 +17,7 @@ constexpr auto service_name = "pixelgame";
 int main()
 {
 	bool running = true;
+	asio::ip::tcp::socket socket(io_service);
 	
 	while (running)
 	{
@@ -33,27 +33,49 @@ int main()
 				if (service_query.Show())
 				{
 					std::cout << "Connecting to " << address_query.Value() << "..." << std::endl;
-					auto endpoint_iterator = resolver.resolve(address_query.Value(), service_query.Value());
-
-					asio::ip::tcp::socket socket(io_service);
 
 					try
 					{
+						auto endpoint_iterator = resolver.resolve(address_query.Value(), service_query.Value());
 						asio::connect(socket, endpoint_iterator);
 					}
 					catch (asio::system_error& e)
 					{
-						std::cout << "Could not connect - " << e.what();
-						break;
+						std::cout << "Failed to connect: " << e.what() << std::endl;
+						continue;
 					}
 
 					std::cout << (socket.is_open() ? "Connection established!" : "Could not connect - unknown error") << std::endl;
-					socket.close();
+
+					efiilj::UserInput<std::string> name_query("Enter player name: ", "> ");
+					efiilj::UserInput<int> form_query("Enter player form: ", "> ", 0, 3);
+
+					if (name_query.Show() && form_query.Show())
+					{
+						std::string name = name_query.Value();
+						auto form = static_cast<object_form>(form_query.Value());
+						
+						asio::error_code err;
+						client_mgr manager(socket);
+						
+						auto player = std::make_shared<client>(name, form, human);
+						
+						if (manager.join(player, err))
+						{
+							std::cout << "Joined successfully!" << std::endl;
+							manager.start();
+						}
+						else
+						{
+							std::cout << "Failed to join match: " << err.message() << std::endl;
+						}
+					}
 				}
 			}
 		}
 	}
 
+	socket.close();
 	return 0;
 }
 
