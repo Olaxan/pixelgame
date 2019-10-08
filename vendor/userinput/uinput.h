@@ -39,7 +39,26 @@ namespace efiilj
 		bool _state;			//Has the input been converted successfully?
 		T _value, _min, _max;
 
-		bool Validate(std::string input); //Check if input is valid in the current context.
+		template<typename U = T>
+		typename std::enable_if<!std::is_same<std::string, U>::value, bool>::type
+			Validate(std::string input) // Validate, type is not string
+			{
+				std::stringstream ss;
+
+				ss << input;
+				ss >> _value;
+
+				_state = !ss.fail();
+				return _state;
+			}
+
+		template<typename U = T>
+		typename std::enable_if<std::is_same<std::string, U>::value, bool>::type
+			Validate(std::string input) // Validate, type is string
+			{
+				_value = input;
+				return _state = true;
+			}
 
 		//SFINAE: Use this variant if T is arithmetic (can use greater-than/smaller-than operators).
 		template<typename U = T>

@@ -48,7 +48,8 @@ int main()
 					std::cout << (socket.is_open() ? "Connection established!" : "Could not connect - unknown error") << std::endl;
 
 					efiilj::UserInput<std::string> name_query("Enter player name: ", "> ");
-					efiilj::UserInput<int> form_query("Enter player form: ", "> ", 0, 3);
+					efiilj::UserInput<int> form_query("Enter player form (0 = cube, 1 = sphere, 2 = pyramid, 3 = cone): ",
+						"> ", 0, 3);
 
 					if (name_query.Show() && form_query.Show())
 					{
@@ -64,6 +65,7 @@ int main()
 						{
 							std::cout << "Joined successfully!" << std::endl;
 							manager.start();
+							return 0;
 						}
 						else
 						{
