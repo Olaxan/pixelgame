@@ -120,11 +120,14 @@ void client_mgr::update()
 		{
 		case new_player_position:
 		{
-			std::cout << "Player moved!" << std::endl;
 			new_player_position_msg pm_msg{ };
 			memcpy_s(&pm_msg, sizeof new_player_position_msg, bytes, sizeof new_player_position_msg);
 			if (it != players_.end())
-				it->second.position = pm_msg.pos;
+			{
+				client* cli = &it->second;
+				cli->position = pm_msg.pos;
+				std::cout << cli->name << " moved to " << cli->position.x << ", " << cli->position.y << std::endl;
+			}
 
 			break;
 		}
@@ -150,7 +153,7 @@ void client_mgr::update()
 			break;
 		}
 
-		std::cout << "Received data (id " << id << ") " << (id == id_ ? "[self]" : "[other]") << std::endl;
+		//std::cout << "Received data (id " << id << ") " << (id == id_ ? "[self]" : "[other]") << std::endl;
 	}
 }
 
@@ -211,14 +214,12 @@ void client_mgr::move(const directions dir, const int count)
 	coordinate cord = it->second.position;
 	cord.x += (dir == right - (dir == left)) * count;
 	cord.y += (dir == forward - (dir == backward)) * count;
-
-	std::cout << "I want to move to " << cord.x << ", " << cord.y << std::endl;
 	
 	move_event msg_move
 	{
 		event_msg
 		{
-			msg_head{sizeof move_event, sequence_, id_, msg_type::event },
+			msg_head{sizeof move_event, sequence_, id_, event },
 			event_type::move
 		},
 		coordinate(cord),
