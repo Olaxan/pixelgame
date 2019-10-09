@@ -44,4 +44,7 @@ public:
 	void update();
 	void input();
 	void move(directions dir, int count);
+	msg_head read_msg_head();
+	change_msg read_change_head();
+	void sync();
 };

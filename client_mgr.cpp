@@ -64,6 +64,8 @@ bool client_mgr::join(std::shared_ptr<client> player, asio::error_code& err)
 		return false;
 	}
 
+	sync();
+
 	return true;
 }
 
@@ -99,61 +101,71 @@ void client_mgr::update()
 		if (!is_ready())
 			return;
 
-		char bytes[max_buf_len];
-		change_msg ch_msg_head{};
-
 		try
 		{
-			endpoint_.receive(asio::buffer(bytes, max_buf_len));
+			asio::error_code error;
+			asio::streambuf header_buffer;
+
+			const unsigned int header_length = sizeof change_msg;
+			
+			endpoint_.receive(header_buffer.prepare(header_length));
+			header_buffer.commit(header_length);
+			std::istream header(&header_buffer);
+			
+			change_msg msg{};
+			header.read(reinterpret_cast<char*>(&msg), header_length);
+
+			const unsigned int message_id = msg.head.id;
+			const unsigned int message_length = msg.head.length;
+			const unsigned int remaining_length = message_length - header_length;
+			auto player_iterator = players_.find(message_id);
+
+			asio::streambuf message_buffer;
+			
+			endpoint_.receive(message_buffer.prepare(remaining_length));
+			message_buffer.commit(remaining_length);
+			std::istream content(&message_buffer);
+
+			switch (msg.type)
+			{
+				case new_player:
+				{
+					new_player_msg np {};
+					content.read(reinterpret_cast<char*>(&np + header_length), remaining_length);
+					std::cout << np.name << " = new " << np.desc << std::endl;
+					players_[message_id] = client(np);
+					break;
+				}
+				case player_leave:
+				{
+					if (player_iterator != players_.end())
+					{
+						client* cli = &player_iterator->second;
+						std::cout << "Player " << cli->name << " left the game." << std::endl;
+						players_.erase(player_iterator);
+					}
+				}
+				case new_player_position:
+				{
+					new_player_position_msg pp{};
+					content.read(reinterpret_cast<char*>(&pp), msg.head.length);
+						
+					if (player_iterator != players_.end())
+					{
+						client* cli = &player_iterator->second;
+						cli->position = pp.pos;
+						std::cout << cli->name << " moved to " << cli->position.x << ", " << cli->position.y << std::endl;
+					}
+					break;
+				}
+				default: ;
+			}
+			
 		}
 		catch (asio::system_error& e)
 		{
-			return;
+			std::cout << "Transmission error: " << e.what() << std::endl;
 		}
-
-		memcpy_s(&ch_msg_head, sizeof change_msg, bytes, sizeof change_msg);
-
-		const unsigned int id = ch_msg_head.head.id;
-		const auto it = players_.find(id);
-
-		switch (ch_msg_head.type)
-		{
-		case new_player_position:
-		{
-			new_player_position_msg pm_msg{ };
-			memcpy_s(&pm_msg, sizeof new_player_position_msg, bytes, sizeof new_player_position_msg);
-			if (it != players_.end())
-			{
-				client* cli = &it->second;
-				cli->position = pm_msg.pos;
-				std::cout << cli->name << " moved to " << cli->position.x << ", " << cli->position.y << std::endl;
-			}
-
-			break;
-		}
-		case new_player:
-		{
-			std::cout << "Player joined!" << std::endl;
-			new_player_msg np_msg{ };
-			memcpy_s(&np_msg, sizeof new_player_msg, bytes, sizeof new_player_msg);
-			players_[id] = client(np_msg);
-
-			break;
-		}
-		case player_leave:
-		{
-			std::cout << "Player left!" << std::endl;
-			if (it != players_.end())
-				players_.erase(it);
-
-			break;
-		}
-		default:
-			std::cout << "Unknown server response" << std::endl;
-			break;
-		}
-
-		//std::cout << "Received data (id " << id << ") " << (id == id_ ? "[self]" : "[other]") << std::endl;
 	}
 }
 
@@ -227,4 +239,26 @@ void client_mgr::move(const directions dir, const int count)
 	};
 	
 	endpoint_.send(asio::buffer(&msg_move, msg_move.event.head.length));
+	sequence_++;
+}
+
+msg_head client_mgr::read_msg_head()
+{
+	msg_head head { };
+	endpoint_.read_some(asio::buffer(&head, sizeof msg_head));
+	std::cout << "Received message head (length " << head.length << " bytes)";
+	return head;
+}
+
+change_msg client_mgr::read_change_head()
+{
+	change_msg head{ };
+	endpoint_.read_some(asio::buffer(&head, sizeof change_msg));
+	std::cout << "Received change message head (length " << head.head.length << " bytes, type is " << head.type << ")";
+	return head;
+}
+
+void client_mgr::sync()
+{
+	std::cout << "Size of: " << sizeof new_player_msg + sizeof new_player_position_msg << std::endl;
 }
