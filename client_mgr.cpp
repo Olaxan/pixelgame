@@ -20,8 +20,9 @@ client_mgr::directions client_mgr::get_dir(const std::string& input)
 	return none;
 }
 
-client_mgr::client_mgr(asio::ip::tcp::socket& endpoint)
-	: endpoint_(std::move(endpoint)), sequence_(0), id_(0), running_(false) { }
+client_mgr::client_mgr(asio::ip::tcp::socket& endpoint, const std::string canvas_address, const std::string canvas_service)
+	: endpoint_(std::move(endpoint)), canvas_address_(canvas_address), canvas_service_(canvas_service),
+	  sequence_(0), id_(0), running_(false) { }
 
 bool client_mgr::is_ready()
 {
@@ -64,8 +65,6 @@ bool client_mgr::join(std::shared_ptr<client> player, asio::error_code& err)
 		return false;
 	}
 
-	sync();
-
 	return true;
 }
 
@@ -104,36 +103,34 @@ void client_mgr::update()
 		try
 		{
 			asio::error_code error;
-			asio::streambuf header_buffer;
+			asio::streambuf received_buffer;
 
 			const unsigned int header_length = sizeof change_msg;
-			
-			endpoint_.receive(header_buffer.prepare(header_length));
-			header_buffer.commit(header_length);
-			std::istream header(&header_buffer);
+
+			endpoint_.receive(received_buffer.prepare(header_length));
+			received_buffer.commit(header_length);
+			std::istream data_stream(&received_buffer);
 			
 			change_msg msg{};
-			header.read(reinterpret_cast<char*>(&msg), header_length);
+			data_stream.read(reinterpret_cast<char*>(&msg), header_length);
 
 			const unsigned int message_id = msg.head.id;
 			const unsigned int message_length = msg.head.length;
 			const unsigned int remaining_length = message_length - header_length;
 			auto player_iterator = players_.find(message_id);
-
-			asio::streambuf message_buffer;
 			
-			endpoint_.receive(message_buffer.prepare(remaining_length));
-			message_buffer.commit(remaining_length);
-			std::istream content(&message_buffer);
-
 			switch (msg.type)
 			{
 				case new_player:
 				{
 					new_player_msg np {};
-					content.read(reinterpret_cast<char*>(&np + header_length), remaining_length);
-					std::cout << np.name << " = new " << np.desc << std::endl;
+					endpoint_.receive(asio::buffer(&np.desc, remaining_length));
+						
+					if (msg.head.id != id_)
+						std::cout << np.name << " (" << to_string(np.form) << ") joined the game!" << std::endl;
+						
 					players_[message_id] = client(np);
+						
 					break;
 				}
 				case player_leave:
@@ -148,19 +145,19 @@ void client_mgr::update()
 				case new_player_position:
 				{
 					new_player_position_msg pp{};
-					content.read(reinterpret_cast<char*>(&pp), msg.head.length);
+					endpoint_.receive(asio::buffer(&pp.pos, remaining_length));
 						
 					if (player_iterator != players_.end())
 					{
 						client* cli = &player_iterator->second;
 						cli->position = pp.pos;
-						std::cout << cli->name << " moved to " << cli->position.x << ", " << cli->position.y << std::endl;
 					}
 					break;
 				}
 				default: ;
 			}
-			
+
+			draw();
 		}
 		catch (asio::system_error& e)
 		{
@@ -223,42 +220,62 @@ void client_mgr::move(const directions dir, const int count)
 	if (it == players_.end())
 		return;
 
-	coordinate cord = it->second.position;
-	cord.x += (dir == right - (dir == left)) * count;
-	cord.y += (dir == forward - (dir == backward)) * count;
-	
-	move_event msg_move
+	for (int i = 0; i < count; i++)
 	{
-		event_msg
+		coordinate cord = it->second.position;
+		cord.x += (dir == right - (dir == left));
+		cord.y += (dir == forward - (dir == backward));
+
+		move_event msg_move
 		{
-			msg_head{sizeof move_event, sequence_, id_, event },
-			event_type::move
-		},
-		coordinate(cord),
-		coordinate {0, 0}
-	};
+			event_msg
+			{
+				msg_head{sizeof move_event, sequence_, id_, event },
+				event_type::move
+			},
+			coordinate(cord),
+			coordinate {0, 0}
+		};
+
+		endpoint_.send(asio::buffer(&msg_move, msg_move.event.head.length));
+		sequence_++;
+
+		std::this_thread::sleep_for(std::chrono::milliseconds(5));
+	}
+}
+
+void client_mgr::draw() const
+{
+	try
+	{
+		asio::io_service io_service;
+		asio::ip::udp::resolver resolver(io_service);
+		asio::ip::udp::endpoint receiver_endpoint = *resolver.resolve(canvas_address_, canvas_service_);
+		asio::ip::udp::socket socket(io_service);
+		socket.open(asio::ip::udp::v6());
+
+		draw_packet clear{ -1, -1, 0 };
 	
-	endpoint_.send(asio::buffer(&msg_move, msg_move.event.head.length));
-	sequence_++;
-}
+		socket.send_to(asio::buffer(&clear, sizeof draw_packet), receiver_endpoint);
 
-msg_head client_mgr::read_msg_head()
-{
-	msg_head head { };
-	endpoint_.read_some(asio::buffer(&head, sizeof msg_head));
-	std::cout << "Received message head (length " << head.length << " bytes)";
-	return head;
-}
+		for (auto it = players_.begin(); it != players_.end(); ++it)
+		{
+			const client* cli = &it->second;
+			
+			draw_packet pixel
+			{
+				swap_endian<int>(cli->position.x + 100),
+				swap_endian<int>(cli->position.y + 100),
+				swap_endian<int>((16711680)) /*cli->form + 1) * INT_MAX / 4*/
+			};
+			
+			socket.send_to(asio::buffer(&pixel, sizeof draw_packet), receiver_endpoint);
+		}
 
-change_msg client_mgr::read_change_head()
-{
-	change_msg head{ };
-	endpoint_.read_some(asio::buffer(&head, sizeof change_msg));
-	std::cout << "Received change message head (length " << head.head.length << " bytes, type is " << head.type << ")";
-	return head;
-}
-
-void client_mgr::sync()
-{
-	std::cout << "Size of: " << sizeof new_player_msg + sizeof new_player_position_msg << std::endl;
+		socket.close();
+	}
+	catch (asio::system_error& e)
+	{
+		std::cout << "Draw error: " << e.what() << std::endl;
+	}
 }

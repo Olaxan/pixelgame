@@ -3,7 +3,6 @@
 #define ASIO_STANDALONE
 #include "asio/asio.hpp"
 
-#include "protocol.h"
 #include "client.h"
 #include <string>
 #include <map>
@@ -13,10 +12,11 @@ constexpr unsigned int max_buf_len = 512;
 class client_mgr
 {
 private:
-
+	
 	asio::ip::tcp::socket endpoint_;
 	std::shared_ptr<client> self_;
 	std::map<int, client> players_;
+	std::string canvas_address_, canvas_service_;
 	unsigned int sequence_;
 	unsigned int id_;
 	bool running_;
@@ -33,7 +33,7 @@ private:
 	static directions get_dir(const std::string& input);
 	
 public:
-	explicit client_mgr(asio::ip::tcp::socket& endpoint);
+	explicit client_mgr(asio::ip::tcp::socket& endpoint, std::string canvas_address, std::string canvas_service);
 
 	void player(std::shared_ptr<client> player) { self_ = std::move(player); }
 	client player() const { return *self_; }
@@ -44,7 +44,5 @@ public:
 	void update();
 	void input();
 	void move(directions dir, int count);
-	msg_head read_msg_head();
-	change_msg read_change_head();
-	void sync();
+	void draw() const;
 };

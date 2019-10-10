@@ -13,6 +13,8 @@ asio::io_service io_service;
 asio::ip::tcp::resolver resolver(io_service);
 
 constexpr auto service_name = "pixelgame";
+constexpr auto canvas_addr = "::1";
+constexpr auto canvas_port = "4445";
 
 int main()
 {
@@ -57,7 +59,7 @@ int main()
 						auto form = static_cast<object_form>(form_query.Value());
 						
 						asio::error_code err;
-						client_mgr manager(socket);
+						client_mgr manager(socket, canvas_addr, canvas_port);
 						
 						auto player = std::make_shared<client>(name, form, human);
 						

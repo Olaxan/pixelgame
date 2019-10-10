@@ -10,6 +10,18 @@ enum object_desc
 	static_object
 };
 
+inline const char* to_string(const object_desc e)
+{
+	switch (e)
+	{
+	case human: return "human";
+	case non_human: return "non human";
+	case vehicle: return "vehicle";
+	case static_object: return "static object";
+	default: return "unknown";
+	}
+}
+
 enum object_form
 {
 	cube,
@@ -18,10 +30,29 @@ enum object_form
 	cone
 };
 
+inline const char* to_string(const object_form e)
+{
+	switch (e)
+	{
+	case cube: return "cube";
+	case sphere: return "sphere";
+	case pyramid: return "pyramid";
+	case cone: return "cone";
+	default: return "unknown";
+	}
+}
+
 struct coordinate
 {
 	int x;
 	int y;
+};
+
+struct draw_packet
+{
+	int x;
+	int y;
+	int rgb;
 };
 
 // Message head
