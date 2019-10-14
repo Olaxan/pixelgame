@@ -61,7 +61,7 @@ int main()
 						asio::error_code err;
 						client_mgr manager(socket, canvas_addr, canvas_port);
 						
-						auto player = std::make_shared<client>(name, form, human);
+						auto player = client(name, form, human);
 						
 						if (manager.join(player, err))
 						{

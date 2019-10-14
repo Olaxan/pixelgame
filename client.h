@@ -23,6 +23,18 @@ struct client
 	object_desc desc;
 	char name[max_name_len] {};
 
+	int get_rgb() const
+	{
+		switch (form)
+		{
+		case cube: return 16711680;
+		case sphere: return 65280;
+		case pyramid: return 16776960;
+		case cone: return 255;
+		default: return 16777215;
+		}
+	}
+
 	bool operator < (const client other) const
 	{
 		return memcmp(this, &other, sizeof(client)) > 0;
